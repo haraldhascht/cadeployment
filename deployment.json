@@ -1,0 +1,1013 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "LogicAppName": {
+            "defaultValue": "Get-SecureScore-Information",
+            "type": "string"
+        },
+		"stgaccountname": {
+			"defaultValue": "caspolaadstg",
+			"type": "string"
+
+		},	
+	    "containerName": {
+        "type": "string",
+        "defaultValue": "aad-reporting",
+        "metadata": {
+        "description": "Specifies the name of the blob container."
+              }
+        },
+		"workbookDisplayName": {
+         "type": "string",
+         "defaultValue": "AAD Conditional Access Overview",
+         "metadata": {
+        "description": "The friendly name for the workbook that is used in the Gallery or Saved List.  This name must be unique within a resource group."
+        		}
+    	},
+    	"workbookType": {
+     	 "type": "string",
+     	 "defaultValue": "workbook",
+     	 "metadata": {
+       	 "description": "The gallery that the workbook will been shown under. Supported values include workbook, tsg, etc. Usually, this is 'workbook'"
+      		}
+    	},
+    	"workbookSourceId": {
+    	"type": "string",
+    	"defaultValue": "azure monitor",
+     	 "metadata": {
+         "description": "The id of resource instance to which the workbook will be associated"
+      		}
+    	},
+    	"workbookId": {
+      	"type": "string",
+      	"defaultValue": "[newGuid()]",
+      	"metadata": {
+        "description": "The unique guid for this workbook instance"
+      		}
+    	},
+        "application_ID": {
+            "defaultValue": "Enter your application ID here",
+            "type": "string"
+        },
+        "application_secret": {
+            "defaultValue": "Enter your application secret here",
+            "type": "securestring"
+        },
+        "Tenant_ID": {
+            "defaultValue": "Enter your tenant ID here",
+            "type": "string"
+        },
+        "KeyVaultname": {
+            "defaultValue": "Enter your Key Vault Name here",
+            "type": "string"
+        },
+        "LogAnalyticsWorkspaceID": {
+            "type": "string",
+            "defaultValue": "Enter your Workspace ID here",
+            "metadata": {
+                "description": "The unique identifier of the Azure Log Analytics workspace."
+            }
+        },
+        "LogAnalyticsWorkspaceKey": {
+            "type": "securestring",
+            "defaultValue": "Enter your Workspace Key here",
+            "metadata": {
+                "description": "The primary or secondary key of the Azure Log Analytics workspace."
+            }
+        },
+        "UserName": {
+            "defaultValue": "<username>@<domain>",
+            "type": "string"
+        }
+    },
+    "variables": {
+        "AzureLogAnalyticsConnectionName": "[concat('azureloganalyticsdatacollector-', parameters('LogicAppName'))]"
+    },
+    "resources": [
+        {
+			
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            "name": "[variables('AzureLogAnalyticsConnectionName')]",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "displayName": "[parameters('UserName')]",
+                "parameterValues": {
+                    "username": "[parameters('LogAnalyticsWorkspaceID')]",
+                    "password": "[parameters('LogAnalyticsWorkspaceKey')]"
+                },
+                "api": {
+                    "id": "[concat('/subscriptions/', subscription().subscriptionId, '/providers/Microsoft.Web/locations/', resourceGroup().location, '/managedApis/azureloganalyticsdatacollector')]"
+                }
+            }
+        },
+         {
+            "type": "Microsoft.Web/connections",
+            "apiVersion": "2016-06-01",
+            "name": "keyvault",
+            "location": "[resourceGroup().location]",
+            "kind": "V1",
+             "properties": {
+                "displayName": "[parameters('KeyVaultname')]",
+                "parameterValueType": "Alternative",
+                "alternativeParameterValues": {
+                "vaultName": "[parameters('KeyVaultname')]"
+                },
+                "customParameterValues": {},
+                "api": {
+                    "id": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', resourceGroup().location, 'keyvault')]"
+                }
+            }		
+        },
+        {
+            "type": "Microsoft.KeyVault/vaults",
+            "name": "[parameters('KeyVaultname')]",
+            "apiVersion": "2019-09-01",
+            "location": "[resourceGroup().location]",
+            "tags": {
+                "displayName":  "[parameters('KeyVaultname')]"
+            },
+            "properties": {
+                "enabledForDeployment": true,
+                "enabledForTemplateDeployment": true,
+                "tenantId": "[parameters('Tenant_ID')]",
+                "accessPolicies": [
+                    {
+                        "tenantId": "[parameters('Tenant_ID')]",
+                        "objectId": "[reference(resourceId('Microsoft.Logic/workflows',parameters('LogicAppName')),'2019-05-01', 'full').identity.principalId]",
+                        "permissions": {
+                            "keys": [
+                                "ALL"
+                            ],
+                            "secrets": [
+                                "ALL"
+
+                            ]
+                        }
+                    }
+                ],
+                "sku": {
+                    "name": "standard",
+                    "family": "A"
+                }
+                
+            },
+			"dependsOn":[
+                "[resourceId('Microsoft.Logic/workflows', parameters('LogicAppName'))]"
+            ]
+        },
+		{
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "name": "[concat(parameters('KeyVaultname'), '/', 'Secret')]",
+            "apiVersion": "2018-02-14",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "value": "[parameters('application_secret')]",
+                "contentType" : "string"
+            },
+			"dependsOn":[
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('KeyVaultname'))]"
+            ]
+		},
+		{
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "name": "[concat(parameters('KeyVaultname'), '/', 'ApplicationID')]",
+            "apiVersion": "2018-02-14",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "value": "[parameters('application_ID')]",
+                "contentType" : "string"
+            },
+			"dependsOn":[
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('KeyVaultname'))]"
+            ]
+		},
+		{
+            "type": "Microsoft.KeyVault/vaults/secrets",
+            "name": "[concat(parameters('KeyVaultname'), '/', 'TenantID')]",
+            "apiVersion": "2018-02-14",
+            "location": "[resourceGroup().location]",
+            "properties": {
+                "value": "[parameters('Tenant_ID')]",
+                "contentType" : "string"
+            },
+			"dependsOn":[
+                "[resourceId('Microsoft.KeyVault/vaults', parameters('KeyVaultname'))]"
+            ]
+		},
+		{
+              "type": "Microsoft.Storage/storageAccounts",
+              "apiVersion": "2021-04-01",
+              "name": "[parameters('stgaccountname')]",
+              "location": "[resourceGroup().location]",
+              "sku": {
+                "name": "Standard_LRS"
+              },
+              "kind": "StorageV2"
+            },
+		{
+			"type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      		"apiVersion": "2022-05-01",
+      		"name": "[format('{0}/default/{1}', parameters('stgaccountname'), parameters('containerName'))]",
+      		"dependsOn": [
+        	"[resourceId('Microsoft.Storage/storageAccounts', parameters('stgaccountname'))]"]
+		},
+		{
+      		"name": "[parameters('workbookId')]",
+      		"type": "microsoft.insights/workbooks",
+      		"location": "[resourceGroup().location]",
+      		"apiVersion": "2022-04-01",
+      		"dependsOn": [],
+      		"kind": "shared",
+      		"properties": {
+        	"displayName": "[parameters('workbookDisplayName')]",
+       		"serializedData": "{\"version\":\"Notebook/1.0\",\"items\":[{\"type\":1,\"content\":{\"json\":\"# Azure AD Conditional Access Overview\"},\"customWidth\":\"75\",\"name\":\"text - 0\"},{\"type\":9,\"content\":{\"version\":\"KqlParameterItem/1.0\",\"parameters\":[{\"id\":\"72f642e2-5d84-4449-be57-3a8a2ae332d9\",\"version\":\"KqlParameterItem/1.0\",\"name\":\"Guide\",\"type\":10,\"isRequired\":true,\"typeSettings\":{\"additionalResourceOptions\":[]},\"jsonData\":\"[\\r\\n    {\\\"value\\\": \\\"On\\\", \\\"label\\\": \\\"On\\\"},\\r\\n    {\\\"value\\\": \\\"Off\\\", \\\"label\\\": \\\"Off\\\", \\\"selected\\\":true}\\r\\n]\",\"timeContext\":{\"durationMs\":86400000}}],\"style\":\"pills\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\"},\"customWidth\":\"25\",\"name\":\"parameters - 10\"},{\"type\":1,\"content\":{\"json\":\"# Workbook Guide\\r\\nOrganizations use Azure AD Conditional Access to determine who should have access to what resources under the right cicumstances. This workbook was designed to help admins understand the impact of their Conditional Access policies by aggregating sign-in results and highlighting users bypassing your Conditional Access policies. [Learn more](https://learn.microsoft.com/en-us/azure/active-directory/conditional-access/plan-conditional-access).\\r\\n\\r\\n## Policy Overview\\r\\nThis tab displays all configured conditional access policies in three tabels. The first one lists all the policies which are in \\\"enabled\\\" state. The next one contains the policies that are in \\\"Report only\\\" state and the last one contains the policies which are off.\\r\\n\\r\\n## Conditions Usage\\r\\nThis tab gives an overview of the different configured conditions within all policies\\r\\n\\r\\n## Prerepuisites\\r\\nThis tab support during the prerepuisites for the device stattus of conditional access. Which devices are accessing connected application? How many of them are known (HAADJ or compliant)?\\r\\n\\r\\n## Logic app\\r\\nTo support theworkbook the Azure Logic App [AAD-CA-Policy-Overview](https://portal.azure.com/#@expert360.de/resource/subscriptions/fe9e2f7e-b1c0-46c8-9695-798b4afb3237/resourcegroups/AAD-Reporting/providers/Microsoft.Logic/workflows/AAD_CA_Policy_Overview/logicApp) is required.\\r\\nThis Logic App gets all connection attributes from an Azure Key Vault. After that is use Azuer AD Graph API to get a list of all Azure AD Conditinal Access policies. Then it queries the details of each policies and sends it to log analytics.\"},\"conditionalVisibility\":{\"parameterName\":\"Guide\",\"comparison\":\"isEqualTo\",\"value\":\"On\"},\"name\":\"Guide\"},{\"type\":11,\"content\":{\"version\":\"LinkItem/1.0\",\"style\":\"tabs\",\"links\":[{\"id\":\"cd3b4cb9-dfb9-4bca-8604-11db277b552c\",\"cellValue\":\"tab\",\"linkTarget\":\"parameter\",\"linkLabel\":\"Policy Overview\",\"subTarget\":\"policy\",\"preText\":\"Policy Overview\",\"style\":\"link\"},{\"id\":\"e752b082-ea5e-4c04-8301-9166f07d0409\",\"cellValue\":\"tab\",\"linkTarget\":\"parameter\",\"linkLabel\":\"Conditions Usage\",\"subTarget\":\"conditions\",\"style\":\"link\"},{\"id\":\"0a007e0e-69fb-4ebe-baeb-61ecf609a887\",\"cellValue\":\"tab\",\"linkTarget\":\"parameter\",\"linkLabel\":\"Prerequisites\",\"subTarget\":\"Prerequisites\",\"style\":\"link\"}]},\"name\":\"links - 5\"},{\"type\":12,\"content\":{\"version\":\"NotebookGroup/1.0\",\"groupType\":\"editable\",\"items\":[{\"type\":1,\"content\":{\"json\":\"Use the filters below to filter the policies based on your attributes. The filters are **not case sensitive**. It displays the policies that **contains the search term**.\",\"style\":\"info\"},\"conditionalVisibility\":{\"parameterName\":\"Guide\",\"comparison\":\"isEqualTo\",\"value\":\"On\"},\"name\":\"CAP_Filter\"},{\"type\":9,\"content\":{\"version\":\"KqlParameterItem/1.0\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/sentinel/providers/microsoft.operationalinsights/workspaces/laws-sentinel\"],\"parameters\":[{\"id\":\"30502bb4-3afb-43b5-a74b-56fd54362edb\",\"version\":\"KqlParameterItem/1.0\",\"name\":\"User_Group\",\"label\":\"User or Group\",\"type\":1,\"description\":\"Exact match on full user principal name (e.g. user@domain.com). Default value is \\\"All users\\\"\",\"timeContext\":{\"durationMs\":86400000},\"value\":\"\"},{\"id\":\"d2d18110-bce8-4877-9463-8ae166737cc8\",\"version\":\"KqlParameterItem/1.0\",\"name\":\"App\",\"type\":1,\"description\":\"Exact match on app display name. Default value is \\\"All apps\\\"\",\"timeContext\":{\"durationMs\":86400000},\"value\":\"\"},{\"id\":\"d1ddf035-01b7-4bef-b21e-4d54a4dbad11\",\"version\":\"KqlParameterItem/1.0\",\"name\":\"Role\",\"label\":\"AAD Role\",\"type\":2,\"description\":\"Exact match on role display name. Default value is \\\"All roles\\\"\",\"multiSelect\":true,\"quote\":\"'\",\"delimiter\":\",\",\"query\":\"AAD_CA_includedRoles_CL\\r\\n| union AAD_CA_excludedRoles_CL\\r\\n| extend roles = iff(tostring(includedRoleName_s) != \\\"\\\",tostring(includedRoleName_s), tostring(excludedRoleName_s))\\r\\n| where isnotempty(roles)\\r\\n| distinct roles\\r\\n| sort by ['roles'] asc \",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/sentinel/providers/microsoft.operationalinsights/workspaces/laws-sentinel\"],\"typeSettings\":{\"additionalResourceOptions\":[],\"showDefault\":false},\"timeContext\":{\"durationMs\":86400000},\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\"},{\"id\":\"369c0460-6506-4af5-8a72-20fd063b08e4\",\"version\":\"KqlParameterItem/1.0\",\"name\":\"Platforms\",\"label\":\"Device platforms\",\"type\":2,\"description\":\"Platform the user is signing in from. For example, 'iOS'\",\"multiSelect\":true,\"quote\":\"'\",\"delimiter\":\",\",\"query\":\"AAD_CA_Policies_CL\\r\\n| mv-expand todynamic(conditions_platforms_excludePlatforms_s), todynamic(conditions_platforms_includePlatforms_s)\\r\\n| extend platforms = tostring(conditions_platforms_excludePlatforms_s), tostring(conditions_platforms_includePlatforms_s)\\r\\n| where isnotempty(platforms)\\r\\n| distinct platforms\\r\\n| sort by ['platforms'] asc\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/sentinel/providers/microsoft.operationalinsights/workspaces/laws-sentinel\"],\"typeSettings\":{\"additionalResourceOptions\":[],\"showDefault\":false},\"timeContext\":{\"durationMs\":86400000},\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\"},{\"id\":\"d2282230-a2c7-4c9e-9b0d-6e919a4a5f2d\",\"version\":\"KqlParameterItem/1.0\",\"name\":\"Grant\",\"type\":2,\"description\":\"Block access or select additional requirements which need to be satisfied to allow access\",\"multiSelect\":true,\"quote\":\"'\",\"delimiter\":\",\",\"query\":\"AAD_CA_Policies_CL\\r\\n| mv-expand todynamic(grantControls_builtInControls_s)\\r\\n| where isnotempty(grantControls_builtInControls_s )\\r\\n| distinct tostring(grantControls_builtInControls_s)\\r\\n| sort by ['grantControls_builtInControls_s'] asc \",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/sentinel/providers/microsoft.operationalinsights/workspaces/laws-sentinel\"],\"typeSettings\":{\"additionalResourceOptions\":[],\"showDefault\":false},\"timeContext\":{\"durationMs\":86400000},\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\"}],\"style\":\"pills\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\"},\"name\":\"parameters - 1\"},{\"type\":1,\"content\":{\"json\":\"The table lists all the policies which are in \\\"enabled\\\" state.\",\"style\":\"info\"},\"conditionalVisibility\":{\"parameterName\":\"Guide\",\"comparison\":\"isEqualTo\",\"value\":\"On\"},\"name\":\"text - 5\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"let AAD_CA_Apps_CL = externaldata(AppId: string, AppDisplayName: string)[@'https://aadreporting.blob.core.windows.net/aad-reporting/Azure%20Default%20Service%20Principals%20Reference%20Table.csv' h@'?sp=r&st=2023-03-25T11:04:03Z&se=2025-12-31T22:59:59Z&spr=https&sv=2021-12-02&sr=b&sig=gIJLH%2FeWrW4CCZKg7aJF7fsPRr%2B%2BoTqkuLvLeGr9r8E%3D'] with (ignoreFirstRecord=true);\\r\\nAAD_CA_Policies_CL\\r\\n| summarize arg_max(TimeGenerated,*) by id_g\\r\\n| where state_s == \\\"enabled\\\"\\r\\n| mv-expand todynamic(conditions_users_includeUsers_s), todynamic(conditions_users_excludeUsers_s), todynamic(conditions_users_includeGroups_s), todynamic(conditions_users_excludeGroups_s), todynamic(conditions_users_includeRoles_s), todynamic(conditions_users_excludeRoles_s), todynamic(conditions_applications_excludeApplications_s), todynamic(conditions_applications_includeApplications_s)\\r\\n| extend conditions_users_includeUsers_s = tostring(conditions_users_includeUsers_s)\\r\\n| extend conditions_users_excludeUsers_s = tostring(conditions_users_excludeUsers_s)\\r\\n| extend conditions_users_includeGroups_s = tostring(conditions_users_includeGroups_s)\\r\\n| extend conditions_users_excludeGroups_s = tostring(conditions_users_excludeGroups_s)\\r\\n| extend conditions_users_includeRoles_s = tostring(conditions_users_includeRoles_s)\\r\\n| extend conditions_users_excludeRoles_s = tostring(conditions_users_excludeRoles_s)\\r\\n| extend conditions_applications_includeApplications_s = tostring(conditions_applications_includeApplications_s)\\r\\n| extend conditions_applications_excludeApplications_s = tostring(conditions_applications_excludeApplications_s)\\r\\n| extend conditions_applications_includeAuthenticationContextClassReferences_s = replace_string(replace_string(conditions_applications_includeAuthenticationContextClassReferences_s,'[',''),']','')\\r\\n| extend conditions_applications_includeUserActions_s = replace_string(replace_string(conditions_applications_includeUserActions_s,'[',''),']','')\\r\\n| extend grantControls_builtInControls_s = replace_string(replace_string(grantControls_builtInControls_s,'[',''),']','')\\r\\n| extend grantControls_customAuthenticationFactors_s = replace_string(replace_string(grantControls_customAuthenticationFactors_s,'[',''),']','')\\r\\n//| extend grantControls_termsOfUse_s = replace_string(replace_string(grantControls_termsOfUse_s,'[',''),']','')\\r\\n| extend grantControls_termsOfUse_s = tostring(todynamic(grantControls_termsOfUse_s)[0])\\r\\n| extend conditions_userRiskLevels_s = replace_string(replace_string(conditions_userRiskLevels_s,'[',''),']','')\\r\\n| extend conditions_signInRiskLevels_s = replace_string(replace_string(conditions_signInRiskLevels_s,'[',''),']','')\\r\\n| extend conditions_servicePrincipalRiskLevels_s = replace_string(replace_string(conditions_servicePrincipalRiskLevels_s,'[',''),']','')\\r\\n| extend conditions_platforms_includePlatforms_s = replace_string(replace_string(conditions_platforms_includePlatforms_s,'[',''),']','')\\r\\n| extend conditions_platforms_excludePlatforms_s = replace_string(replace_string(conditions_platforms_excludePlatforms_s,'[',''),']','')\\r\\n| extend conditions_clientAppTypes_s = replace_string(replace_string(conditions_clientAppTypes_s,'[',''),']','')\\r\\n| join kind = leftouter AAD_CA_includedUsers_CL on $left.conditions_users_includeUsers_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_excludedUsers_CL on $left.conditions_users_excludeUsers_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_includedGroups_CL on $left.conditions_users_includeGroups_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_excludedGroups_CL on $left.conditions_users_excludeGroups_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_includedRoles_CL on $left.conditions_users_includeRoles_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_excludedRoles_CL on $left.conditions_users_excludeRoles_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_TermsOfUse_CL on $left.grantControls_termsOfUse_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_Apps_CL on $left.conditions_applications_includeApplications_s == $right.AppId\\r\\n| join kind = leftouter AAD_CA_Apps_CL on $left.conditions_applications_excludeApplications_s == $right.AppId\\r\\n| extend conditions_applications_includeApplications_s = iff(AppDisplayName != \\\"\\\", AppDisplayName, conditions_applications_includeApplications_s)\\r\\n| extend conditions_applications_excludeApplications_s = iff(AppDisplayName1 != \\\"\\\", AppDisplayName1, conditions_applications_excludeApplications_s)\\r\\n| where includedUserName_s contains \\\"{User_Group:escape}\\\" or excludedUserName_s contains \\\"{User_Group:escape}\\\" or excludedGroupName_s contains \\\"{User_Group:escape}\\\" or includedGroupName_s contains \\\"{User_Group:escape}\\\"\\r\\n| where includedRoleName_s contains \\\"{Role:escape}\\\" or  excludedRoleName_s contains \\\"{Role:escape}\\\"\\r\\n| where conditions_applications_includeApplications_s contains \\\"{App:escape}\\\" or  conditions_applications_excludeApplications_s contains \\\"{App:escape}\\\"\\r\\n| where grantControls_builtInControls_s contains \\\"{Grant:escape}\\\" or isempty(grantControls_builtInControls_s)\\r\\n| where conditions_platforms_includePlatforms_s contains \\\"{Platforms:escape}\\\" or conditions_platforms_excludePlatforms_s contains \\\"{Platforms:escape}\\\" or isempty(conditions_platforms_includePlatforms_s) or isempty(conditions_platforms_excludePlatforms_s)\\r\\n| summarize make_list_if(includedUserName_s, includedUserName_s != \\\"\\\"), make_list_if(excludedUserName_s, excludedUserName_s != \\\"\\\"), make_list_if(includedGroupName_s, includedGroupName_s != \\\"\\\"), make_list_if(excludedGroupName_s, excludedGroupName_s != \\\"\\\"), make_list_if(includedRoleName_s, includedRoleName_s != \\\"\\\"), make_list_if(excludedRoleName_s, excludedRoleName_s != \\\"\\\"), make_list_if(includedRoleName_s, includedRoleName_s != \\\"\\\"), make_list_if(excludedRoleName_s, excludedRoleName_s != \\\"\\\"), make_list_if(conditions_applications_includeApplications_s, conditions_applications_includeApplications_s != \\\"\\\"), make_list_if(conditions_applications_excludeApplications_s, conditions_applications_excludeApplications_s != \\\"\\\") by displayName_s, conditions_applications_includeUserActions_s,conditions_applications_includeAuthenticationContextClassReferences_s, grantControls_operator_s, grantControls_builtInControls_s, grantControls_customAuthenticationFactors_s, grantControls_termsOfUse_s, termsOfUseAgreementName_s, conditions_userRiskLevels_s, conditions_signInRiskLevels_s, conditions_servicePrincipalRiskLevels_s, conditions_platforms_includePlatforms_s, conditions_platforms_excludePlatforms_s, conditions_clientAppTypes_s\\r\\n| mv-apply Results = todynamic(list_excludedUserName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_excludedUserName_s)\\r\\n  | distinct tostring(list_excludedUserName_s)\\r\\n  | summarize excludedUserName_s=make_list_if(list_excludedUserName_s, list_excludedUserName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_includedUserName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_includedUserName_s)\\r\\n  | distinct tostring(list_includedUserName_s)\\r\\n  | summarize includedUserName_s=make_list_if(list_includedUserName_s, list_includedUserName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_excludedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_excludedGroupName_s)\\r\\n  | distinct tostring(list_excludedGroupName_s)\\r\\n  | summarize excludedGroupName_s=make_list_if(list_excludedGroupName_s, list_excludedGroupName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_includedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_includedGroupName_s)\\r\\n  | distinct tostring(list_includedGroupName_s)\\r\\n  | summarize includedGroupName_s=make_list_if(list_includedGroupName_s, list_includedGroupName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_excludedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_excludedRoleName_s)\\r\\n  | distinct tostring(list_excludedRoleName_s)\\r\\n  | summarize excludedRoleName_s=make_list_if(list_excludedRoleName_s, list_excludedRoleName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_includedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_includedRoleName_s)\\r\\n  | distinct tostring(list_includedRoleName_s)\\r\\n  | summarize includedRoleName_s=make_list_if(list_includedRoleName_s, list_includedRoleName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_conditions_applications_excludeApplications_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_conditions_applications_excludeApplications_s)\\r\\n  | distinct tostring(list_conditions_applications_excludeApplications_s)\\r\\n  | summarize excludeApplications_s=make_list_if(list_conditions_applications_excludeApplications_s, list_conditions_applications_excludeApplications_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_conditions_applications_includeApplications_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_conditions_applications_includeApplications_s)\\r\\n  | distinct tostring(list_conditions_applications_includeApplications_s)\\r\\n  | summarize includeApplications_s=make_list_if(list_conditions_applications_includeApplications_s, list_conditions_applications_includeApplications_s != \\\"\\\")\\r\\n)\\r\\n| extend includedUserName_s = replace_string(replace_string(tostring(includedUserName_s),'[',''),']','')\\r\\n| extend excludedUserName_s = replace_string(replace_string(tostring(excludedUserName_s),'[',''),']','')\\r\\n| extend includedGroupName_s = replace_string(replace_string(tostring(includedGroupName_s),'[',''),']','')\\r\\n| extend excludedGroupName_s = replace_string(replace_string(tostring(excludedGroupName_s),'[',''),']','')\\r\\n| extend includedRoleName_s = replace_string(replace_string(tostring(includedRoleName_s),'[',''),']','')\\r\\n| extend excludedRoleName_s = replace_string(replace_string(tostring(excludedRoleName_s),'[',''),']','')\\r\\n| extend includeApplications_s = replace_string(replace_string(tostring(includeApplications_s),'[',''),']','')\\r\\n| extend excludeApplications_s = replace_string(replace_string(tostring(excludeApplications_s),'[',''),']','')\\r\\n| distinct  ['Policy Name']=displayName_s, ['Users Included']=includedUserName_s, ['Users Excluded']=excludedUserName_s, ['Groups Included']=includedGroupName_s, ['Groups Excluded']=excludedGroupName_s, ['Roles Included']=includedRoleName_s, ['Roles Excluded']=excludedRoleName_s, ['Applications Included']=includeApplications_s, ['Applications Excluded']=excludeApplications_s, ['Applications IncludeUserActions']=conditions_applications_includeUserActions_s, ['Applications IncludeAuthenticationContextClassReferences']=conditions_applications_includeAuthenticationContextClassReferences_s,  ['GrantControls Operator']=grantControls_operator_s, ['GrantControls BuiltIn']=grantControls_builtInControls_s, ['Custom Authentication Factors']=grantControls_customAuthenticationFactors_s, ['Terms of Use']=termsOfUseAgreementName_s, ['User RiskLevel']=conditions_userRiskLevels_s, ['SignIn RiskLevel']=conditions_signInRiskLevels_s, ['Service Principal RiskLevel']=conditions_servicePrincipalRiskLevels_s, ['Platforms Included']=conditions_platforms_includePlatforms_s, ['Platforms Excluded']=conditions_platforms_excludePlatforms_s, ['ClientApp Type']=conditions_clientAppTypes_s\",\"size\":0,\"title\":\"AAD CA Policies with state \\\"enabled\\\"\",\"timeContext\":{\"durationMs\":86400000},\"showExportToExcel\":true,\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"gridSettings\":{\"sortBy\":[{\"itemKey\":\"Policy Name\",\"sortOrder\":1}]},\"sortBy\":[{\"itemKey\":\"Policy Name\",\"sortOrder\":1}]},\"name\":\"AAD CA Policies with state \\\"enabled\\\"\"},{\"type\":1,\"content\":{\"json\":\"The table lists all the policies which are in \\\"Report Only\\\" state.\",\"style\":\"info\"},\"conditionalVisibility\":{\"parameterName\":\"Guide\",\"comparison\":\"isEqualTo\",\"value\":\"On\"},\"name\":\"text - 6\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"let AAD_CA_Apps_CL = externaldata(AppId: string, AppDisplayName: string)[@'https://aadreporting.blob.core.windows.net/aad-reporting/Azure%20Default%20Service%20Principals%20Reference%20Table.csv' h@'?sp=r&st=2023-03-25T11:04:03Z&se=2025-12-31T22:59:59Z&spr=https&sv=2021-12-02&sr=b&sig=gIJLH%2FeWrW4CCZKg7aJF7fsPRr%2B%2BoTqkuLvLeGr9r8E%3D'] with (ignoreFirstRecord=true);\\r\\nAAD_CA_Policies_CL\\r\\n| summarize arg_max(TimeGenerated,*) by id_g\\r\\n| where state_s == \\\"enabledForReportingButNotEnforced\\\"\\r\\n| mv-expand todynamic(conditions_users_includeUsers_s), todynamic(conditions_users_excludeUsers_s), todynamic(conditions_users_includeGroups_s), todynamic(conditions_users_excludeGroups_s), todynamic(conditions_users_includeRoles_s), todynamic(conditions_users_excludeRoles_s), todynamic(conditions_applications_excludeApplications_s), todynamic(conditions_applications_includeApplications_s)\\r\\n| extend conditions_users_includeUsers_s = tostring(conditions_users_includeUsers_s)\\r\\n| extend conditions_users_excludeUsers_s = tostring(conditions_users_excludeUsers_s)\\r\\n| extend conditions_users_includeGroups_s = tostring(conditions_users_includeGroups_s)\\r\\n| extend conditions_users_excludeGroups_s = tostring(conditions_users_excludeGroups_s)\\r\\n| extend conditions_users_includeRoles_s = tostring(conditions_users_includeRoles_s)\\r\\n| extend conditions_users_excludeRoles_s = tostring(conditions_users_excludeRoles_s)\\r\\n| extend conditions_applications_includeApplications_s = tostring(conditions_applications_includeApplications_s)\\r\\n| extend conditions_applications_excludeApplications_s = tostring(conditions_applications_excludeApplications_s)\\r\\n| extend conditions_applications_includeAuthenticationContextClassReferences_s = replace_string(replace_string(conditions_applications_includeAuthenticationContextClassReferences_s,'[',''),']','')\\r\\n| extend conditions_applications_includeUserActions_s = replace_string(replace_string(conditions_applications_includeUserActions_s,'[',''),']','')\\r\\n| extend grantControls_builtInControls_s = replace_string(replace_string(grantControls_builtInControls_s,'[',''),']','')\\r\\n| extend grantControls_customAuthenticationFactors_s = replace_string(replace_string(grantControls_customAuthenticationFactors_s,'[',''),']','')\\r\\n//| extend grantControls_termsOfUse_s = replace_string(replace_string(grantControls_termsOfUse_s,'[',''),']','')\\r\\n| extend grantControls_termsOfUse_s = tostring(todynamic(grantControls_termsOfUse_s)[0])\\r\\n| extend conditions_userRiskLevels_s = replace_string(replace_string(conditions_userRiskLevels_s,'[',''),']','')\\r\\n| extend conditions_signInRiskLevels_s = replace_string(replace_string(conditions_signInRiskLevels_s,'[',''),']','')\\r\\n| extend conditions_servicePrincipalRiskLevels_s = replace_string(replace_string(conditions_servicePrincipalRiskLevels_s,'[',''),']','')\\r\\n| extend conditions_platforms_includePlatforms_s = replace_string(replace_string(conditions_platforms_includePlatforms_s,'[',''),']','')\\r\\n| extend conditions_platforms_excludePlatforms_s = replace_string(replace_string(conditions_platforms_excludePlatforms_s,'[',''),']','')\\r\\n| extend conditions_clientAppTypes_s = replace_string(replace_string(conditions_clientAppTypes_s,'[',''),']','')\\r\\n| join kind = leftouter AAD_CA_includedUsers_CL on $left.conditions_users_includeUsers_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_excludedUsers_CL on $left.conditions_users_excludeUsers_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_includedGroups_CL on $left.conditions_users_includeGroups_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_excludedGroups_CL on $left.conditions_users_excludeGroups_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_includedRoles_CL on $left.conditions_users_includeRoles_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_excludedRoles_CL on $left.conditions_users_excludeRoles_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_TermsOfUse_CL on $left.grantControls_termsOfUse_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_Apps_CL on $left.conditions_applications_includeApplications_s == $right.AppId\\r\\n| join kind = leftouter AAD_CA_Apps_CL on $left.conditions_applications_excludeApplications_s == $right.AppId\\r\\n| extend conditions_applications_includeApplications_s = iff(AppDisplayName != \\\"\\\", AppDisplayName, conditions_applications_includeApplications_s)\\r\\n| extend conditions_applications_excludeApplications_s = iff(AppDisplayName1 != \\\"\\\", AppDisplayName1, conditions_applications_excludeApplications_s)\\r\\n| where includedUserName_s contains \\\"{User_Group:escape}\\\" or excludedUserName_s contains \\\"{User_Group:escape}\\\" or excludedGroupName_s contains \\\"{User_Group:escape}\\\" or includedGroupName_s contains \\\"{User_Group:escape}\\\"\\r\\n| where includedRoleName_s contains \\\"{Role:escape}\\\" or  excludedRoleName_s contains \\\"{Role:escape}\\\"\\r\\n| where conditions_applications_includeApplications_s contains \\\"{App:escape}\\\" or  conditions_applications_excludeApplications_s contains \\\"{App:escape}\\\"\\r\\n| where grantControls_builtInControls_s contains \\\"{Grant:escape}\\\" or isempty(grantControls_builtInControls_s)\\r\\n| where conditions_platforms_includePlatforms_s contains \\\"{Platforms:escape}\\\" or conditions_platforms_excludePlatforms_s contains \\\"{Platforms:escape}\\\" or isempty(conditions_platforms_includePlatforms_s) or isempty(conditions_platforms_excludePlatforms_s)\\r\\n| summarize make_list_if(includedUserName_s, includedUserName_s != \\\"\\\"), make_list_if(excludedUserName_s, excludedUserName_s != \\\"\\\"), make_list_if(includedGroupName_s, includedGroupName_s != \\\"\\\"), make_list_if(excludedGroupName_s, excludedGroupName_s != \\\"\\\"), make_list_if(includedRoleName_s, includedRoleName_s != \\\"\\\"), make_list_if(excludedRoleName_s, excludedRoleName_s != \\\"\\\"), make_list_if(includedRoleName_s, includedRoleName_s != \\\"\\\"), make_list_if(excludedRoleName_s, excludedRoleName_s != \\\"\\\"), make_list_if(conditions_applications_includeApplications_s, conditions_applications_includeApplications_s != \\\"\\\"), make_list_if(conditions_applications_excludeApplications_s, conditions_applications_excludeApplications_s != \\\"\\\") by displayName_s, conditions_applications_includeUserActions_s,conditions_applications_includeAuthenticationContextClassReferences_s, grantControls_operator_s, grantControls_builtInControls_s, grantControls_customAuthenticationFactors_s, grantControls_termsOfUse_s, termsOfUseAgreementName_s, conditions_userRiskLevels_s, conditions_signInRiskLevels_s, conditions_servicePrincipalRiskLevels_s, conditions_platforms_includePlatforms_s, conditions_platforms_excludePlatforms_s, conditions_clientAppTypes_s\\r\\n| mv-apply Results = todynamic(list_excludedUserName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_excludedUserName_s)\\r\\n  | distinct tostring(list_excludedUserName_s)\\r\\n  | summarize excludedUserName_s=make_list_if(list_excludedUserName_s, list_excludedUserName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_includedUserName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_includedUserName_s)\\r\\n  | distinct tostring(list_includedUserName_s)\\r\\n  | summarize includedUserName_s=make_list_if(list_includedUserName_s, list_includedUserName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_excludedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_excludedGroupName_s)\\r\\n  | distinct tostring(list_excludedGroupName_s)\\r\\n  | summarize excludedGroupName_s=make_list_if(list_excludedGroupName_s, list_excludedGroupName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_includedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_includedGroupName_s)\\r\\n  | distinct tostring(list_includedGroupName_s)\\r\\n  | summarize includedGroupName_s=make_list_if(list_includedGroupName_s, list_includedGroupName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_excludedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_excludedRoleName_s)\\r\\n  | distinct tostring(list_excludedRoleName_s)\\r\\n  | summarize excludedRoleName_s=make_list_if(list_excludedRoleName_s, list_excludedRoleName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_includedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_includedRoleName_s)\\r\\n  | distinct tostring(list_includedRoleName_s)\\r\\n  | summarize includedRoleName_s=make_list_if(list_includedRoleName_s, list_includedRoleName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_conditions_applications_excludeApplications_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_conditions_applications_excludeApplications_s)\\r\\n  | distinct tostring(list_conditions_applications_excludeApplications_s)\\r\\n  | summarize excludeApplications_s=make_list_if(list_conditions_applications_excludeApplications_s, list_conditions_applications_excludeApplications_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_conditions_applications_includeApplications_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_conditions_applications_includeApplications_s)\\r\\n  | distinct tostring(list_conditions_applications_includeApplications_s)\\r\\n  | summarize includeApplications_s=make_list_if(list_conditions_applications_includeApplications_s, list_conditions_applications_includeApplications_s != \\\"\\\")\\r\\n)\\r\\n| extend includedUserName_s = replace_string(replace_string(tostring(includedUserName_s),'[',''),']','')\\r\\n| extend excludedUserName_s = replace_string(replace_string(tostring(excludedUserName_s),'[',''),']','')\\r\\n| extend includedGroupName_s = replace_string(replace_string(tostring(includedGroupName_s),'[',''),']','')\\r\\n| extend excludedGroupName_s = replace_string(replace_string(tostring(excludedGroupName_s),'[',''),']','')\\r\\n| extend includedRoleName_s = replace_string(replace_string(tostring(includedRoleName_s),'[',''),']','')\\r\\n| extend excludedRoleName_s = replace_string(replace_string(tostring(excludedRoleName_s),'[',''),']','')\\r\\n| extend includeApplications_s = replace_string(replace_string(tostring(includeApplications_s),'[',''),']','')\\r\\n| extend excludeApplications_s = replace_string(replace_string(tostring(excludeApplications_s),'[',''),']','')\\r\\n| distinct  ['Policy Name']=displayName_s, ['Users Included']=includedUserName_s, ['Users Excluded']=excludedUserName_s, ['Groups Included']=includedGroupName_s, ['Groups Excluded']=excludedGroupName_s, ['Roles Included']=includedRoleName_s, ['Roles Excluded']=excludedRoleName_s, ['Applications Included']=includeApplications_s, ['Applications Excluded']=excludeApplications_s, ['Applications IncludeUserActions']=conditions_applications_includeUserActions_s, ['Applications IncludeAuthenticationContextClassReferences']=conditions_applications_includeAuthenticationContextClassReferences_s,  ['GrantControls Operator']=grantControls_operator_s, ['GrantControls BuiltIn']=grantControls_builtInControls_s, ['Custom Authentication Factors']=grantControls_customAuthenticationFactors_s, ['Terms of Use']=termsOfUseAgreementName_s, ['User RiskLevel']=conditions_userRiskLevels_s, ['SignIn RiskLevel']=conditions_signInRiskLevels_s, ['Service Principal RiskLevel']=conditions_servicePrincipalRiskLevels_s, ['Platforms Included']=conditions_platforms_includePlatforms_s, ['Platforms Excluded']=conditions_platforms_excludePlatforms_s, ['ClientApp Type']=conditions_clientAppTypes_s\",\"size\":2,\"title\":\"AAD CA Policies with state \\\"enabledForReportingButNotEnforced\\\"\",\"timeContext\":{\"durationMs\":86400000},\"showExportToExcel\":true,\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"gridSettings\":{\"sortBy\":[{\"itemKey\":\"Policy Name\",\"sortOrder\":1}]},\"sortBy\":[{\"itemKey\":\"Policy Name\",\"sortOrder\":1}]},\"name\":\"AAD CA Policies with state \\\"enabledForReportingButNotEnforced\\\"\"},{\"type\":1,\"content\":{\"json\":\"The table lists all the policies which are in \\\"off\\\" state.\",\"style\":\"info\"},\"conditionalVisibility\":{\"parameterName\":\"Guide\",\"comparison\":\"isEqualTo\",\"value\":\"On\"},\"name\":\"text - 7\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"let AAD_CA_Apps_CL = externaldata(AppId: string, AppDisplayName: string)[@'https://aadreporting.blob.core.windows.net/aad-reporting/Azure%20Default%20Service%20Principals%20Reference%20Table.csv' h@'?sp=r&st=2023-03-25T11:04:03Z&se=2025-12-31T22:59:59Z&spr=https&sv=2021-12-02&sr=b&sig=gIJLH%2FeWrW4CCZKg7aJF7fsPRr%2B%2BoTqkuLvLeGr9r8E%3D'] with (ignoreFirstRecord=true);\\r\\nAAD_CA_Policies_CL\\r\\n| summarize arg_max(TimeGenerated,*) by id_g\\r\\n| where state_s == \\\"disabled\\\"\\r\\n| mv-expand todynamic(conditions_users_includeUsers_s), todynamic(conditions_users_excludeUsers_s), todynamic(conditions_users_includeGroups_s), todynamic(conditions_users_excludeGroups_s), todynamic(conditions_users_includeRoles_s), todynamic(conditions_users_excludeRoles_s), todynamic(conditions_applications_excludeApplications_s), todynamic(conditions_applications_includeApplications_s)\\r\\n| extend conditions_users_includeUsers_s = tostring(conditions_users_includeUsers_s)\\r\\n| extend conditions_users_excludeUsers_s = tostring(conditions_users_excludeUsers_s)\\r\\n| extend conditions_users_includeGroups_s = tostring(conditions_users_includeGroups_s)\\r\\n| extend conditions_users_excludeGroups_s = tostring(conditions_users_excludeGroups_s)\\r\\n| extend conditions_users_includeRoles_s = tostring(conditions_users_includeRoles_s)\\r\\n| extend conditions_users_excludeRoles_s = tostring(conditions_users_excludeRoles_s)\\r\\n| extend conditions_applications_includeApplications_s = tostring(conditions_applications_includeApplications_s)\\r\\n| extend conditions_applications_excludeApplications_s = tostring(conditions_applications_excludeApplications_s)\\r\\n| extend conditions_applications_includeAuthenticationContextClassReferences_s = replace_string(replace_string(conditions_applications_includeAuthenticationContextClassReferences_s,'[',''),']','')\\r\\n| extend conditions_applications_includeUserActions_s = replace_string(replace_string(conditions_applications_includeUserActions_s,'[',''),']','')\\r\\n| extend grantControls_builtInControls_s = replace_string(replace_string(grantControls_builtInControls_s,'[',''),']','')\\r\\n| extend grantControls_customAuthenticationFactors_s = replace_string(replace_string(grantControls_customAuthenticationFactors_s,'[',''),']','')\\r\\n//| extend grantControls_termsOfUse_s = replace_string(replace_string(grantControls_termsOfUse_s,'[',''),']','')\\r\\n| extend grantControls_termsOfUse_s = tostring(todynamic(grantControls_termsOfUse_s)[0])\\r\\n| extend conditions_userRiskLevels_s = replace_string(replace_string(conditions_userRiskLevels_s,'[',''),']','')\\r\\n| extend conditions_signInRiskLevels_s = replace_string(replace_string(conditions_signInRiskLevels_s,'[',''),']','')\\r\\n| extend conditions_servicePrincipalRiskLevels_s = replace_string(replace_string(conditions_servicePrincipalRiskLevels_s,'[',''),']','')\\r\\n| extend conditions_platforms_includePlatforms_s = replace_string(replace_string(conditions_platforms_includePlatforms_s,'[',''),']','')\\r\\n| extend conditions_platforms_excludePlatforms_s = replace_string(replace_string(conditions_platforms_excludePlatforms_s,'[',''),']','')\\r\\n| extend conditions_clientAppTypes_s = replace_string(replace_string(conditions_clientAppTypes_s,'[',''),']','')\\r\\n| join kind = leftouter AAD_CA_includedUsers_CL on $left.conditions_users_includeUsers_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_excludedUsers_CL on $left.conditions_users_excludeUsers_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_includedGroups_CL on $left.conditions_users_includeGroups_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_excludedGroups_CL on $left.conditions_users_excludeGroups_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_includedRoles_CL on $left.conditions_users_includeRoles_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_excludedRoles_CL on $left.conditions_users_excludeRoles_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_TermsOfUse_CL on $left.grantControls_termsOfUse_s == $right.id_g\\r\\n| join kind = leftouter AAD_CA_Apps_CL on $left.conditions_applications_includeApplications_s == $right.AppId\\r\\n| join kind = leftouter AAD_CA_Apps_CL on $left.conditions_applications_excludeApplications_s == $right.AppId\\r\\n| extend conditions_applications_includeApplications_s = iff(AppDisplayName != \\\"\\\", AppDisplayName, conditions_applications_includeApplications_s)\\r\\n| extend conditions_applications_excludeApplications_s = iff(AppDisplayName1 != \\\"\\\", AppDisplayName1, conditions_applications_excludeApplications_s)\\r\\n| where includedUserName_s contains \\\"{User_Group:escape}\\\" or excludedUserName_s contains \\\"{User_Group:escape}\\\" or excludedGroupName_s contains \\\"{User_Group:escape}\\\" or includedGroupName_s contains \\\"{User_Group:escape}\\\"\\r\\n| where includedRoleName_s contains \\\"{Role:escape}\\\" or  excludedRoleName_s contains \\\"{Role:escape}\\\"\\r\\n| where conditions_applications_includeApplications_s contains \\\"{App:escape}\\\" or  conditions_applications_excludeApplications_s contains \\\"{App:escape}\\\"\\r\\n| where grantControls_builtInControls_s contains \\\"{Grant:escape}\\\" or isempty(grantControls_builtInControls_s)\\r\\n| where conditions_platforms_includePlatforms_s contains \\\"{Platforms:escape}\\\" or conditions_platforms_excludePlatforms_s contains \\\"{Platforms:escape}\\\" or isempty(conditions_platforms_includePlatforms_s) or isempty(conditions_platforms_excludePlatforms_s)\\r\\n| summarize make_list_if(includedUserName_s, includedUserName_s != \\\"\\\"), make_list_if(excludedUserName_s, excludedUserName_s != \\\"\\\"), make_list_if(includedGroupName_s, includedGroupName_s != \\\"\\\"), make_list_if(excludedGroupName_s, excludedGroupName_s != \\\"\\\"), make_list_if(includedRoleName_s, includedRoleName_s != \\\"\\\"), make_list_if(excludedRoleName_s, excludedRoleName_s != \\\"\\\"), make_list_if(includedRoleName_s, includedRoleName_s != \\\"\\\"), make_list_if(excludedRoleName_s, excludedRoleName_s != \\\"\\\"), make_list_if(conditions_applications_includeApplications_s, conditions_applications_includeApplications_s != \\\"\\\"), make_list_if(conditions_applications_excludeApplications_s, conditions_applications_excludeApplications_s != \\\"\\\") by displayName_s, conditions_applications_includeUserActions_s,conditions_applications_includeAuthenticationContextClassReferences_s, grantControls_operator_s, grantControls_builtInControls_s, grantControls_customAuthenticationFactors_s, grantControls_termsOfUse_s, termsOfUseAgreementName_s, conditions_userRiskLevels_s, conditions_signInRiskLevels_s, conditions_servicePrincipalRiskLevels_s, conditions_platforms_includePlatforms_s, conditions_platforms_excludePlatforms_s, conditions_clientAppTypes_s\\r\\n| mv-apply Results = todynamic(list_excludedUserName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_excludedUserName_s)\\r\\n  | distinct tostring(list_excludedUserName_s)\\r\\n  | summarize excludedUserName_s=make_list_if(list_excludedUserName_s, list_excludedUserName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_includedUserName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_includedUserName_s)\\r\\n  | distinct tostring(list_includedUserName_s)\\r\\n  | summarize includedUserName_s=make_list_if(list_includedUserName_s, list_includedUserName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_excludedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_excludedGroupName_s)\\r\\n  | distinct tostring(list_excludedGroupName_s)\\r\\n  | summarize excludedGroupName_s=make_list_if(list_excludedGroupName_s, list_excludedGroupName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_includedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_includedGroupName_s)\\r\\n  | distinct tostring(list_includedGroupName_s)\\r\\n  | summarize includedGroupName_s=make_list_if(list_includedGroupName_s, list_includedGroupName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_excludedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_excludedRoleName_s)\\r\\n  | distinct tostring(list_excludedRoleName_s)\\r\\n  | summarize excludedRoleName_s=make_list_if(list_excludedRoleName_s, list_excludedRoleName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_includedGroupName_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_includedRoleName_s)\\r\\n  | distinct tostring(list_includedRoleName_s)\\r\\n  | summarize includedRoleName_s=make_list_if(list_includedRoleName_s, list_includedRoleName_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_conditions_applications_excludeApplications_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_conditions_applications_excludeApplications_s)\\r\\n  | distinct tostring(list_conditions_applications_excludeApplications_s)\\r\\n  | summarize excludeApplications_s=make_list_if(list_conditions_applications_excludeApplications_s, list_conditions_applications_excludeApplications_s != \\\"\\\")\\r\\n)\\r\\n| mv-apply Results = todynamic(list_conditions_applications_includeApplications_s) on\\r\\n(\\r\\n  mv-expand todynamic(list_conditions_applications_includeApplications_s)\\r\\n  | distinct tostring(list_conditions_applications_includeApplications_s)\\r\\n  | summarize includeApplications_s=make_list_if(list_conditions_applications_includeApplications_s, list_conditions_applications_includeApplications_s != \\\"\\\")\\r\\n)\\r\\n| extend includedUserName_s = replace_string(replace_string(tostring(includedUserName_s),'[',''),']','')\\r\\n| extend excludedUserName_s = replace_string(replace_string(tostring(excludedUserName_s),'[',''),']','')\\r\\n| extend includedGroupName_s = replace_string(replace_string(tostring(includedGroupName_s),'[',''),']','')\\r\\n| extend excludedGroupName_s = replace_string(replace_string(tostring(excludedGroupName_s),'[',''),']','')\\r\\n| extend includedRoleName_s = replace_string(replace_string(tostring(includedRoleName_s),'[',''),']','')\\r\\n| extend excludedRoleName_s = replace_string(replace_string(tostring(excludedRoleName_s),'[',''),']','')\\r\\n| extend includeApplications_s = replace_string(replace_string(tostring(includeApplications_s),'[',''),']','')\\r\\n| extend excludeApplications_s = replace_string(replace_string(tostring(excludeApplications_s),'[',''),']','')\\r\\n| distinct  ['Policy Name']=displayName_s, ['Users Included']=includedUserName_s, ['Users Excluded']=excludedUserName_s, ['Groups Included']=includedGroupName_s, ['Groups Excluded']=excludedGroupName_s, ['Roles Included']=includedRoleName_s, ['Roles Excluded']=excludedRoleName_s, ['Applications Included']=includeApplications_s, ['Applications Excluded']=excludeApplications_s, ['Applications IncludeUserActions']=conditions_applications_includeUserActions_s, ['Applications IncludeAuthenticationContextClassReferences']=conditions_applications_includeAuthenticationContextClassReferences_s,  ['GrantControls Operator']=grantControls_operator_s, ['GrantControls BuiltIn']=grantControls_builtInControls_s, ['Custom Authentication Factors']=grantControls_customAuthenticationFactors_s, ['Terms of Use']=termsOfUseAgreementName_s, ['User RiskLevel']=conditions_userRiskLevels_s, ['SignIn RiskLevel']=conditions_signInRiskLevels_s, ['Service Principal RiskLevel']=conditions_servicePrincipalRiskLevels_s, ['Platforms Included']=conditions_platforms_includePlatforms_s, ['Platforms Excluded']=conditions_platforms_excludePlatforms_s, ['ClientApp Type']=conditions_clientAppTypes_s\",\"size\":0,\"title\":\"AAD CA Policies with state \\\"disabled\\\"\",\"timeContext\":{\"durationMs\":86400000},\"showExportToExcel\":true,\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"gridSettings\":{\"sortBy\":[{\"itemKey\":\"Users Included\",\"sortOrder\":2}]},\"sortBy\":[{\"itemKey\":\"Users Included\",\"sortOrder\":2}]},\"name\":\"AAD CA Policies with state \\\"disabled\\\"\"}]},\"conditionalVisibility\":{\"parameterName\":\"tab\",\"comparison\":\"isEqualTo\",\"value\":\"policy\"},\"name\":\"policy\"},{\"type\":12,\"content\":{\"version\":\"NotebookGroup/1.0\",\"groupType\":\"editable\",\"items\":[{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"AAD_CA_Policies_CL\\r\\n| summarize arg_max(TimeGenerated,*) by id_g\\r\\n| summarize count() by state_s\",\"size\":4,\"title\":\"Conditional Access Policies by state\",\"timeContext\":{\"durationMs\":86400000},\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"visualization\":\"tiles\",\"tileSettings\":{\"titleContent\":{\"columnMatch\":\"state_s\",\"formatter\":1},\"leftContent\":{\"columnMatch\":\"count_\",\"formatter\":12,\"formatOptions\":{\"palette\":\"auto\"},\"numberFormat\":{\"unit\":17,\"options\":{\"maximumSignificantDigits\":3,\"maximumFractionDigits\":2}}},\"showBorder\":false,\"size\":\"auto\"}},\"name\":\"query - 0\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"AAD_CA_Policies_CL\\r\\n| summarize arg_max(TimeGenerated,*) by id_g\\r\\n| summarize count() by conditions_applications_includeApplications_s\",\"size\":4,\"title\":\"Conditional Access Policies with selected app included\",\"timeContext\":{\"durationMs\":86400000},\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"visualization\":\"tiles\",\"tileSettings\":{\"titleContent\":{\"columnMatch\":\"conditions_applications_includeApplications_s\",\"formatter\":1},\"leftContent\":{\"columnMatch\":\"count_\",\"formatter\":12,\"formatOptions\":{\"palette\":\"auto\"},\"numberFormat\":{\"unit\":17,\"options\":{\"maximumSignificantDigits\":3,\"maximumFractionDigits\":2}}},\"showBorder\":false,\"size\":\"auto\"}},\"name\":\"query - 1\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"AAD_CA_Policies_CL\\r\\n| summarize arg_max(TimeGenerated,*) by id_g\\r\\n| summarize count() by conditions_applications_excludeApplications_s\",\"size\":4,\"title\":\"Conditional Access Policies with selected app excluded\",\"timeContext\":{\"durationMs\":86400000},\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"visualization\":\"tiles\",\"tileSettings\":{\"showBorder\":false,\"titleContent\":{\"columnMatch\":\"conditions_applications_excludeApplications_s\",\"formatter\":1},\"leftContent\":{\"columnMatch\":\"count_\",\"formatter\":12,\"formatOptions\":{\"palette\":\"auto\"},\"numberFormat\":{\"unit\":17,\"options\":{\"maximumSignificantDigits\":3,\"maximumFractionDigits\":2}}}}},\"name\":\"query - 2\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"AAD_CA_Policies_CL\\r\\n| summarize arg_max(TimeGenerated,*) by id_g\\r\\n| summarize count() by conditions_platforms_includePlatforms_s\",\"size\":4,\"title\":\"Conditional Access Policies by platfrom included\",\"timeContext\":{\"durationMs\":86400000},\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"visualization\":\"tiles\",\"tileSettings\":{\"titleContent\":{\"columnMatch\":\"conditions_platforms_includePlatforms_s\",\"formatter\":1},\"leftContent\":{\"columnMatch\":\"count_\",\"formatter\":12,\"formatOptions\":{\"palette\":\"auto\"},\"numberFormat\":{\"unit\":17,\"options\":{\"maximumSignificantDigits\":3,\"maximumFractionDigits\":2}}},\"showBorder\":false,\"size\":\"auto\"}},\"name\":\"query - 3\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"AAD_CA_Policies_CL\\r\\n| summarize arg_max(TimeGenerated,*) by id_g\\r\\n| summarize count() by conditions_platforms_excludePlatforms_s\",\"size\":4,\"title\":\"Conditional Access Policies by platfrom excluded\",\"timeContext\":{\"durationMs\":86400000},\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"visualization\":\"tiles\",\"tileSettings\":{\"titleContent\":{\"columnMatch\":\"conditions_platforms_excludePlatforms_s\",\"formatter\":1},\"leftContent\":{\"columnMatch\":\"count_\",\"formatter\":12,\"formatOptions\":{\"palette\":\"auto\"},\"numberFormat\":{\"unit\":17,\"options\":{\"maximumSignificantDigits\":3,\"maximumFractionDigits\":2}}},\"showBorder\":false,\"size\":\"auto\"}},\"name\":\"query - 4\"}]},\"conditionalVisibility\":{\"parameterName\":\"tab\",\"comparison\":\"isEqualTo\",\"value\":\"conditions\"},\"name\":\"Conditions\"},{\"type\":12,\"content\":{\"version\":\"NotebookGroup/1.0\",\"groupType\":\"editable\",\"items\":[{\"type\":9,\"content\":{\"version\":\"KqlParameterItem/1.0\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"parameters\":[{\"id\":\"13f56671-7604-4427-a4d8-663f3da0cbc5\",\"version\":\"KqlParameterItem/1.0\",\"name\":\"TimeRange\",\"type\":4,\"isRequired\":true,\"value\":{\"durationMs\":604800000},\"typeSettings\":{\"selectableValues\":[{\"durationMs\":300000,\"createdTime\":\"2018-11-13T19:33:10.162Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":900000,\"createdTime\":\"2018-11-13T19:33:10.164Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":1800000,\"createdTime\":\"2018-11-13T19:33:10.164Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":3600000,\"createdTime\":\"2018-11-13T19:33:10.164Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":14400000,\"createdTime\":\"2018-11-13T19:33:10.164Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":43200000,\"createdTime\":\"2018-11-13T19:33:10.164Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":86400000,\"createdTime\":\"2018-11-13T19:33:10.165Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":172800000,\"createdTime\":\"2018-11-13T19:33:10.166Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":259200000,\"createdTime\":\"2018-11-13T19:33:10.166Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":604800000,\"createdTime\":\"2018-11-13T19:33:10.166Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":1209600000,\"createdTime\":\"2018-11-13T19:33:10.166Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false},{\"durationMs\":2592000000,\"createdTime\":\"2018-11-13T19:33:10.167Z\",\"isInitialTime\":false,\"grain\":1,\"useDashboardTimeRange\":false}],\"allowCustom\":true}},{\"id\":\"3b5cc420-8ad8-4523-ba28-a54910756794\",\"version\":\"KqlParameterItem/1.0\",\"name\":\"Apps\",\"type\":2,\"isRequired\":true,\"multiSelect\":true,\"quote\":\"'\",\"delimiter\":\",\",\"query\":\"SigninLogs\\r\\n| summarize Count = count() by AppDisplayName\\r\\n| order by Count desc, AppDisplayName asc\\r\\n| project Value = AppDisplayName, Label = strcat(AppDisplayName, ' - ', Count, ' sign-ins'), Selected = false\\r\\n\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"value\":[\"value::all\"],\"typeSettings\":{\"limitSelectTo\":10,\"additionalResourceOptions\":[\"value::all\"],\"selectAllValue\":\"*\",\"showDefault\":false},\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\"},{\"id\":\"f7f7970b-58c1-474f-9043-62243d2d4edd\",\"version\":\"KqlParameterItem/1.0\",\"name\":\"Users\",\"type\":2,\"isRequired\":true,\"multiSelect\":true,\"quote\":\"'\",\"delimiter\":\",\",\"query\":\"SigninLogs\\r\\n|where AppDisplayName in ({Apps}) or '*' in ({Apps})\\r\\n| summarize Count = count() by UserDisplayName\\r\\n| order by Count desc, UserDisplayName asc\\r\\n| project Value = UserDisplayName, Label = strcat(UserDisplayName, ' - ', Count, ' sign-ins'), Selected = false\\r\\n\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"value\":[\"value::all\"],\"typeSettings\":{\"limitSelectTo\":20,\"additionalResourceOptions\":[\"value::all\"],\"selectAllValue\":\"*\",\"showDefault\":false},\"timeContext\":{\"durationMs\":0},\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\"}],\"style\":\"pills\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\"},\"name\":\"parameters - 1\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"let data = SigninLogs\\r\\n|where AppDisplayName in ({Apps}) or '*' in ({Apps})\\r\\n|where UserDisplayName in ({Users}) or '*' in ({Users})\\r\\n|extend errorCode = Status.errorCode\\r\\n|extend SigninStatus = case(errorCode == 0, \\\"Success\\\", errorCode == 50058, \\\"Pending user action\\\",errorCode == 50140, \\\"Pending user action\\\", errorCode == 51006, \\\"Pending user action\\\", errorCode == 50059, \\\"Pending user action\\\",errorCode == 65001, \\\"Pending user action\\\", errorCode == 52004, \\\"Pending user action\\\", errorCode == 50055, \\\"Pending user action\\\", errorCode == 50144, \\\"Pending user action\\\", errorCode == 50072, \\\"Pending user action\\\", errorCode == 50074, \\\"Pending user action\\\", errorCode == 16000, \\\"Pending user action\\\", errorCode == 16001, \\\"Pending user action\\\", errorCode == 16003, \\\"Pending user action\\\", errorCode == 50127, \\\"Pending user action\\\", errorCode == 50125, \\\"Pending user action\\\", errorCode == 50129, \\\"Pending user action\\\", errorCode == 50143, \\\"Pending user action\\\", errorCode == 81010, \\\"Pending user action\\\", errorCode == 81014, \\\"Pending user action\\\", errorCode == 81012 ,\\\"Pending user action\\\", \\\"Failure\\\");\\r\\ndata\\r\\n| summarize Count = count() by SigninStatus\\r\\n| join kind = fullouter (datatable(SigninStatus:string)['Success', 'Pending action (Interrupts)', 'Failure']) on SigninStatus\\r\\n| project SigninStatus = iff(SigninStatus == '', SigninStatus1, SigninStatus), Count = iff(SigninStatus == '', 0, Count)\\r\\n| join kind = inner (data\\r\\n    | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain} by SigninStatus)\\r\\n    on SigninStatus\\r\\n| project-away SigninStatus1, TimeGenerated\\r\\n| extend Status = SigninStatus\\r\\n| union (\\r\\n    data \\r\\n    | summarize Count = count() \\r\\n    | extend jkey = 1\\r\\n    | join kind=inner (data\\r\\n        | make-series Trend = count() default = 0 on TimeGenerated from {TimeRange:start} to {TimeRange:end} step {TimeRange:grain}\\r\\n        | extend jkey = 1) on jkey\\r\\n    | extend SigninStatus = 'All Sign-ins', Status = '*'    \\r\\n)\\r\\n| order by Count desc\\r\\n\\r\\n\\r\\n\\r\\n\",\"size\":3,\"timeContextFromParameter\":\"TimeRange\",\"exportFieldName\":\"Status\",\"exportParameterName\":\"SigninStatus\",\"exportDefaultValue\":\"*\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"visualization\":\"tiles\",\"tileSettings\":{\"titleContent\":{\"columnMatch\":\"SigninStatus\",\"formatter\":1,\"formatOptions\":{\"showIcon\":true}},\"leftContent\":{\"columnMatch\":\"Count\",\"formatter\":12,\"formatOptions\":{\"palette\":\"blue\",\"showIcon\":true},\"numberFormat\":{\"unit\":17,\"options\":{\"style\":\"decimal\",\"maximumFractionDigits\":2,\"maximumSignificantDigits\":3}}},\"secondaryContent\":{\"columnMatch\":\"Trend\",\"formatter\":9,\"formatOptions\":{\"min\":0,\"palette\":\"blue\",\"showIcon\":true}},\"showBorder\":false}},\"name\":\"query - 5\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"let data = SigninLogs\\r\\n|where AppDisplayName in ({Apps}) or '*' in ({Apps})\\r\\n|where UserDisplayName in ({Users}) or '*' in ({Users})\\r\\n| extend errorCode = Status.errorCode\\r\\n| extend SigninStatus = case(errorCode == 0, \\\"Success\\\", errorCode == 50058, \\\"Pending user action\\\",errorCode == 50140, \\\"Pending user action\\\", errorCode == 51006, \\\"Pending user action\\\", errorCode == 50059, \\\"Pending user action\\\",errorCode == 65001, \\\"Pending user action\\\", errorCode == 52004, \\\"Pending user action\\\", errorCode == 50055, \\\"Pending user action\\\", errorCode == 50144, \\\"Pending user action\\\", errorCode == 50072, \\\"Pending user action\\\", errorCode == 50074, \\\"Pending user action\\\", errorCode == 16000, \\\"Pending user action\\\", errorCode == 16001, \\\"Pending user action\\\", errorCode == 16003, \\\"Pending user action\\\", errorCode == 50127, \\\"Pending user action\\\", errorCode == 50125, \\\"Pending user action\\\", errorCode == 50129, \\\"Pending user action\\\", errorCode == 50143, \\\"Pending user action\\\", errorCode == 81010, \\\"Pending user action\\\", errorCode == 81014, \\\"Pending user action\\\", errorCode == 81012 ,\\\"Pending user action\\\", \\\"Failure\\\")\\r\\n| where SigninStatus == '{SigninStatus}' or '{SigninStatus}' == '*' or '{SigninStatus}' == 'All Sign-ins';\\r\\nlet appData = data\\r\\n| summarize TotalCount = count(), SuccessCount = countif(SigninStatus == \\\"Success\\\"), FailureCount = countif(SigninStatus == \\\"Failure\\\"), InterruptCount = countif(SigninStatus == \\\"Pending user action\\\") by Os = tostring(DeviceDetail.operatingSystem)\\r\\n| where Os != ''\\r\\n| join kind=inner (data\\r\\n    | make-series Trend = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by Os = tostring(DeviceDetail.operatingSystem)\\r\\n    | project-away TimeGenerated) on Os\\r\\n| order by TotalCount desc, Os asc\\r\\n| project Os, TotalCount, SuccessCount, FailureCount, InterruptCount, Trend\\r\\n| serialize Id = row_number();\\r\\ndata\\r\\n| summarize TotalCount = count(), SuccessCount = countif(SigninStatus == \\\"Success\\\"), FailureCount = countif(SigninStatus == \\\"Failure\\\"), InterruptCount = countif(SigninStatus == \\\"Pending user action\\\") by Os = tostring(DeviceDetail.operatingSystem), Browser = tostring(DeviceDetail.browser)\\r\\n| join kind=inner (data\\r\\n    | make-series Trend = count() default = 0 on TimeGenerated in range({TimeRange:start}, {TimeRange:end}, {TimeRange:grain}) by Os = tostring(DeviceDetail.operatingSystem), Browser = tostring(DeviceDetail.browser)\\r\\n    | project-away TimeGenerated) on Os, Browser\\r\\n| order by TotalCount desc, Os asc\\r\\n| project Os, Browser, TotalCount, SuccessCount, FailureCount, InterruptCount, Trend\\r\\n| serialize Id = row_number(1000000)\\r\\n| join kind=inner (appData) on Os\\r\\n| project Id, Name = Browser, Type = 'Browser', ['Sign-in Count'] = TotalCount, Trend, ['Failure Count'] = FailureCount, ['Interrupt Count'] = InterruptCount, ['Success Rate'] = 1.0 * SuccessCount / TotalCount, ParentId = Id1\\r\\n| union (appData \\r\\n    | project Id, Name = Os, Type = 'Operating System', ['Sign-in Count'] = TotalCount, Trend, ['Failure Count'] = FailureCount, ['Interrupt Count'] = InterruptCount, ['Success Rate'] = 1.0 * SuccessCount / TotalCount, ParentId = -1)\\r\\n| order by ['Sign-in Count'] desc, Name asc\",\"size\":1,\"title\":\"Sign-ins by Device Type\",\"timeContextFromParameter\":\"TimeRange\",\"exportParameterName\":\"DeviceDetail\",\"exportDefaultValue\":\"{ \\\"Name\\\":\\\"\\\", \\\"Type\\\":\\\"*\\\"}\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"visualization\":\"table\",\"gridSettings\":{\"formatters\":[{\"columnMatch\":\"Id\",\"formatter\":5,\"formatOptions\":{\"showIcon\":true}},{\"columnMatch\":\"Type\",\"formatter\":5,\"formatOptions\":{\"showIcon\":true}},{\"columnMatch\":\"Sign-in Count\",\"formatter\":8,\"formatOptions\":{\"min\":0,\"palette\":\"blue\",\"showIcon\":true},\"numberFormat\":{\"unit\":17,\"options\":{\"style\":\"decimal\"}}},{\"columnMatch\":\"Trend\",\"formatter\":9,\"formatOptions\":{\"min\":0,\"palette\":\"blue\",\"showIcon\":true},\"numberFormat\":{\"unit\":17,\"options\":{\"style\":\"decimal\"}}},{\"columnMatch\":\"Failure Count|Interrupt Count\",\"formatter\":8,\"formatOptions\":{\"min\":0,\"palette\":\"orange\",\"showIcon\":true},\"numberFormat\":{\"unit\":17,\"options\":{\"style\":\"decimal\"}}},{\"columnMatch\":\"Success Rate\",\"formatter\":5,\"formatOptions\":{\"showIcon\":true},\"numberFormat\":{\"unit\":0,\"options\":{\"style\":\"percent\"}}},{\"columnMatch\":\"ParentId\",\"formatter\":5,\"formatOptions\":{\"showIcon\":true}}],\"filter\":true,\"hierarchySettings\":{\"idColumn\":\"Id\",\"parentColumn\":\"ParentId\",\"treeType\":0,\"expanderColumn\":\"Name\",\"expandTopLevel\":false}}},\"name\":\"query - 9\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"SigninLogs\\r\\n| where DeviceDetail.trustType == \\\"Hybrid Azure AD joined\\\" or DeviceDetail.isManaged == true\\r\\n| extend OperatingSystem = tostring(DeviceDetail.operatingSystem)\\r\\n| summarize count() by OperatingSystem\\r\\n| order by count_ desc nulls last\",\"size\":0,\"title\":\"Sign-ins where device is known (HAADJ or compliant)\",\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"gridSettings\":{\"sortBy\":[{\"itemKey\":\"count_\",\"sortOrder\":2}]},\"sortBy\":[{\"itemKey\":\"count_\",\"sortOrder\":2}]},\"customWidth\":\"50\",\"name\":\"query - 7\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"SigninLogs\\r\\n| where DeviceDetail.trustType == \\\"Hybrid Azure AD joined\\\" and DeviceDetail.isManaged != true\\r\\n| extend OperatingSystem = tostring(DeviceDetail.operatingSystem)\\r\\n| where OperatingSystem contains \\\"Windows\\\"\\r\\n| summarize count() by OperatingSystem\\r\\n| order by count_ desc nulls last\",\"size\":0,\"title\":\"Sign-ins where Windows device is HAADJ but not compliant\",\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"]},\"customWidth\":\"50\",\"name\":\"query - 7\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"SigninLogs\\r\\n| where DeviceDetail.trustType != \\\"Hybrid Azure AD joined\\\" or DeviceDetail.isManaged == false\\r\\n| extend OperatingSystem = tostring(DeviceDetail.operatingSystem)\\r\\n| summarize count() by OperatingSystem\\r\\n| order by count_ desc nulls last\",\"size\":0,\"title\":\"Sign-ins where device is unknown ( not HAADJ or compliant)\",\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"],\"gridSettings\":{\"sortBy\":[{\"itemKey\":\"count_\",\"sortOrder\":2}]},\"sortBy\":[{\"itemKey\":\"count_\",\"sortOrder\":2}]},\"customWidth\":\"50\",\"name\":\"query - 7\"},{\"type\":3,\"content\":{\"version\":\"KqlItem/1.0\",\"query\":\"SigninLogs\\r\\n| where DeviceDetail.isManaged == false\\r\\n| extend OperatingSystem = tostring(DeviceDetail.operatingSystem)\\r\\n| where OperatingSystem != 'Windows'\\r\\n| summarize count() by OperatingSystem\\r\\n| order by count_ desc nulls last\",\"size\":0,\"title\":\"Sign-ins where device is not Windows and not compliant\",\"timeContextFromParameter\":\"TimeRange\",\"queryType\":0,\"resourceType\":\"microsoft.operationalinsights/workspaces\",\"crossComponentResources\":[\"/subscriptions/e3fdff77-a084-4a7a-a8fd-15e991c50ae2/resourceGroups/Sentinel/providers/Microsoft.OperationalInsights/workspaces/LAWS-Sentinel\"]},\"customWidth\":\"50\",\"name\":\"query - 7\"}]},\"conditionalVisibility\":{\"parameterName\":\"tab\",\"comparison\":\"isEqualTo\",\"value\":\"Prerequisites\"},\"name\":\"CA-prerequisites\"}],\"isLocked\":false,\"fallbackResourceIds\":[\"azure monitor\"]}",
+        	"version": "1.0",
+        	"sourceId": "[parameters('workbookSourceId')]",
+        	"category": "[parameters('workbookType')]"
+     		 }
+    	},
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2017-07-01",
+            "name": "[parameters('LogicAppName')]",
+            "location": "[resourceGroup().location]",
+            "identity": {
+                "type": "SystemAssigned"
+                },
+            "tags": {
+                "LogicAppsCategory": "security"
+            },
+            "dependsOn": [
+                "[resourceId('Microsoft.Web/connections', variables('AzureLogAnalyticsConnectionName'))]"
+            ],
+            "properties": {
+                "state": "Disabled",
+                "definition": {
+				"$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+				"actions": {
+					"For_each": {
+						"actions": {
+							"M365_Secure_Score_Controls_Send_Data": {
+								"inputs": {
+									"body": "@{items('For_each')?['controlScores']}",
+									"headers": {
+										"Log-Type": "M365SecureScoreControls"
+									},
+									"host": {
+										"connection": {
+											"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+										}
+									},
+									"method": "post",
+									"path": "/api/logs"
+								},
+								"runAfter": {},
+								"type": "ApiConnection"
+							}
+						},
+						"foreach": "@body('M365_Secure_Score_Parse_JSON')?['value']",
+						"runAfter": {
+							"M365_Secure_Score_Send_Data": [
+								"Succeeded"
+							]
+						},
+						"type": "Foreach"
+					},
+					"Get_ApplicationId_from_Key_Vault": {
+						"inputs": {
+                    "host": {
+                        "connection": {
+                            "name": "@parameters('$connections')['keyvault']['connectionId']"
+                        }
+									},
+									"method": "get",
+									"path": "/secrets/@{encodeURIComponent('ApplicationID')}/value"
+								},
+								"runAfter": {},
+								"runtimeConfiguration": {
+									"secureData": {
+										"properties": [
+											"outputs"
+										]
+									}
+								},
+								"type": "ApiConnection"
+							},
+							"Get_SecretId_from_Key_Vault": {
+								"inputs": {
+									"host": {
+										"connection": {
+											"name": "@parameters('$connections')['keyvault']['connectionId']"
+										}
+									},
+									"method": "get",
+									"path": "/secrets/@{encodeURIComponent('Secret')}/value"
+								},
+								"runAfter": {
+									"Get_ApplicationId_from_Key_Vault": [
+										"Succeeded"
+									]
+								},
+								"runtimeConfiguration": {
+									"secureData": {
+										"properties": [
+											"outputs"
+										]
+									}
+								},
+								"type": "ApiConnection"
+							},
+							"Get_TenantId_from_Key_Vault": {
+								"inputs": {
+									"host": {
+										"connection": {
+											"name": "@parameters('$connections')['keyvault']['connectionId']"
+										}
+									},
+									"method": "get",
+									"path": "/secrets/@{encodeURIComponent('TenantID')}/value"
+								},
+								"runAfter": {
+									"Get_SecretId_from_Key_Vault": [
+										"Succeeded"
+									]
+								},
+								"runtimeConfiguration": {
+									"secureData": {
+										"properties": [
+											"outputs"
+										]
+									}
+								},
+								"type": "ApiConnection"
+							},
+							"M365_Secure_Score_HTTP": {
+								"inputs": {
+									"authentication": {
+										"audience": "https://graph.microsoft.com",
+										"clientId": "@body('Get_ApplicationId_from_Key_Vault')?['value']",
+										"secret": "@body('Get_SecretId_from_Key_Vault')?['value']",
+										"tenant": "@body('Get_TenantId_from_Key_Vault')?['value']",
+										"type": "ActiveDirectoryOAuth"
+									},
+									"method": "GET",
+									"uri": "https://graph.microsoft.com/v1.0/security/secureScores?$top=1"
+								},
+								"runAfter": {
+									"Get_TenantId_from_Key_Vault": [
+										"Succeeded"
+									]
+								},
+								"type": "Http"
+							},
+							"M365_Secure_Score_Parse_JSON": {
+								"inputs": {
+									"content": "@body('M365_Secure_Score_HTTP')",
+									"schema": {
+										"properties": {
+											"@@odata.context": {
+												"type": "string"
+											},
+											"@@odata.nextLink": {
+												"type": "string"
+											},
+											"value": {
+												"items": {
+													"properties": {
+														"activeUserCount": {
+															"type": "integer"
+														},
+														"averageComparativeScores": {
+															"items": {
+																"properties": {
+																	"SeatSizeRangeLowerValue": {
+																		"type": "string"
+																	},
+																	"SeatSizeRangeUpperValue": {
+																		"type": "string"
+																	},
+																	"appsScore": {
+																		"type": "number"
+																	},
+																	"appsScoreMax": {
+																		"type": "number"
+																	},
+																	"averageScore": {
+																		"type": "number"
+																	},
+																	"basis": {
+																		"type": "string"
+																	},
+																	"dataScore": {
+																		"type": "number"
+																	},
+																	"dataScoreMax": {
+																		"type": "number"
+																	},
+																	"deviceScore": {
+																		"type": "number"
+																	},
+																	"deviceScoreMax": {
+																		"type": "number"
+																	},
+																	"identityScore": {
+																		"type": "number"
+																	},
+																	"identityScoreMax": {
+																		"type": "number"
+																	},
+																	"infrastructureScore": {
+																		"type": "integer"
+																	},
+																	"infrastructureScoreMax": {
+																		"type": "integer"
+																	}
+																},
+																"required": [
+																	"basis",
+																	"averageScore",
+																	"appsScore",
+																	"appsScoreMax",
+																	"dataScore",
+																	"dataScoreMax",
+																	"deviceScore",
+																	"deviceScoreMax",
+																	"identityScore",
+																	"identityScoreMax",
+																	"infrastructureScore",
+																	"infrastructureScoreMax"
+																],
+																"type": "object"
+															},
+															"type": "array"
+														},
+														"azureTenantId": {
+															"type": "string"
+														},
+														"controlScores": {
+															"items": {
+																"properties": {
+																	"AgentCnt": {
+																		"type": "string"
+																	},
+																	"AgentCnt3DES": {
+																		"type": "string"
+																	},
+																	"IsApplicable": {
+																		"type": "string"
+																	},
+																	"IsEnforced": {
+																		"type": "string"
+																	},
+																	"State": {
+																		"type": "string"
+																	},
+																	"UserCnt": {
+																		"type": "string"
+																	},
+																	"UserCnt3DES": {
+																		"type": "string"
+																	},
+																	"controlCategory": {
+																		"type": "string"
+																	},
+																	"controlName": {
+																		"type": "string"
+																	},
+																	"controlState": {
+																		"type": "string"
+																	},
+																	"count": {
+																		"type": "string"
+																	},
+																	"description": {
+																		"type": "string"
+																	},
+																	"expiry": {
+																		"type": "string"
+																	},
+																	"implementationStatus": {
+																		"type": "string"
+																	},
+																	"lastSynced": {
+																		"type": "string"
+																	},
+																	"mdoImplementationStatus": {
+																		"type": "string"
+																	},
+																	"on": {
+																		"type": "string"
+																	},
+																	"score": {
+																		"type": "number"
+																	},
+																	"scoreInPercentage": {
+																		"type": "number"
+																	},
+																	"source": {
+																		"type": "string"
+																	},
+																	"total": {
+																		"type": "string"
+																	}
+																},
+																"required": [
+																	"controlCategory",
+																	"controlName",
+																	"description",
+																	"score",
+																	"implementationStatus",
+																	"lastSynced",
+																	"scoreInPercentage"
+																],
+																"type": "object"
+															},
+															"type": "array"
+														},
+														"createdDateTime": {
+															"type": "string"
+														},
+														"currentScore": {
+															"type": "number"
+														},
+														"enabledServices": {
+															"items": {
+																"type": "string"
+															},
+															"type": "array"
+														},
+														"id": {
+															"type": "string"
+														},
+														"licensedUserCount": {
+															"type": "integer"
+														},
+														"maxScore": {
+															"type": "integer"
+														},
+														"vendorInformation": {
+															"properties": {
+																"provider": {
+																	"type": "string"
+																},
+																"providerVersion": {},
+																"subProvider": {},
+																"vendor": {
+																	"type": "string"
+																}
+															},
+															"type": "object"
+														}
+													},
+													"required": [
+														"id",
+														"azureTenantId",
+														"activeUserCount",
+														"createdDateTime",
+														"currentScore",
+														"enabledServices",
+														"licensedUserCount",
+														"maxScore",
+														"vendorInformation",
+														"averageComparativeScores",
+														"controlScores"
+													],
+													"type": "object"
+												},
+												"type": "array"
+											}
+										},
+										"type": "object"
+									}
+								},
+								"runAfter": {
+									"M365_Secure_Score_HTTP": [
+										"Succeeded"
+									]
+								},
+								"type": "ParseJson"
+							},
+							"M365_Secure_Score_Send_Data": {
+								"inputs": {
+									"body": "@{body('M365_Secure_Score_Parse_JSON')?['value']}",
+									"headers": {
+										"Log-Type": "M365SecureScore"
+									},
+									"host": {
+										"connection": {
+											"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+										}
+									},
+									"method": "post",
+									"path": "/api/logs"
+								},
+								"runAfter": {
+									"M365_Secure_Score_Parse_JSON": [
+										"Succeeded"
+									]
+								},
+								"type": "ApiConnection"
+							},
+							"MDE_Exposure_Score_HTTP": {
+								"inputs": {
+									"authentication": {
+										"audience": "https://api.securitycenter.windows.com",
+										"clientId": "@body('Get_ApplicationId_from_Key_Vault')?['value']",
+										"secret": "@body('Get_SecretId_from_Key_Vault')?['value']",
+										"tenant": "@body('Get_TenantId_from_Key_Vault')?['value']",
+										"type": "ActiveDirectoryOAuth"
+									},
+									"method": "GET",
+									"uri": "https://api.securitycenter.windows.com/api/exposureScore"
+								},
+								"runAfter": {
+									"MDE_Secure_Score_Send_Data": [
+										"Succeeded"
+									]
+								},
+								"type": "Http"
+							},
+							"MDE_Exposure_Score_Send_Data": {
+								"inputs": {
+									"body": "@{body('MDE_Exposure_Score_HTTP')}",
+									"headers": {
+										"Log-Type": "MDfEExposureScore"
+									},
+									"host": {
+										"connection": {
+											"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+										}
+									},
+									"method": "post",
+									"path": "/api/logs"
+								},
+								"runAfter": {
+									"MDE_Exposure_Score_HTTP": [
+										"Succeeded"
+									]
+								},
+								"type": "ApiConnection"
+							},
+							"MDE_Recommendations_HTTP": {
+								"inputs": {
+									"authentication": {
+										"audience": "https://api.securitycenter.windows.com",
+										"clientId": "@body('Get_ApplicationId_from_Key_Vault')?['value']",
+										"secret": "@body('Get_SecretId_from_Key_Vault')?['value']",
+										"tenant": "@body('Get_TenantId_from_Key_Vault')?['value']",
+										"type": "ActiveDirectoryOAuth"
+									},
+									"method": "GET",
+									"uri": "https://api.securitycenter.windows.com/api/recommendations"
+								},
+								"runAfter": {
+									"MDE_Exposure_Score_Send_Data": [
+										"Succeeded"
+									]
+								},
+								"type": "Http"
+							},
+							"MDE_Recommendations_Parse_JSON": {
+								"inputs": {
+									"content": "@body('MDE_Recommendations_HTTP')",
+									"schema": {
+										"properties": {
+											"@@odata.context": {
+												"type": "string"
+											},
+											"value": {
+												"items": {
+													"properties": {
+														"activeAlert": {
+															"type": "boolean"
+														},
+														"associatedThreats": {
+															"items": {
+																"type": "string"
+															},
+															"type": "array"
+														},
+														"configScoreImpact": {
+															"type": "number"
+														},
+														"exposedMachinesCount": {
+															"type": "integer"
+														},
+														"exposureImpact": {
+															"type": "number"
+														},
+														"id": {
+															"type": "string"
+														},
+														"nonProductivityImpactedAssets": {
+															"type": "integer"
+														},
+														"productName": {
+															"type": "string"
+														},
+														"publicExploit": {
+															"type": "boolean"
+														},
+														"recommendationCategory": {
+															"type": "string"
+														},
+														"recommendationName": {
+															"type": "string"
+														},
+														"recommendedVersion": {
+															"type": "string"
+														},
+														"relatedComponent": {
+															"type": "string"
+														},
+														"remediationType": {
+															"type": "string"
+														},
+														"severityScore": {
+															"type": "integer"
+														},
+														"status": {
+															"type": "string"
+														},
+														"subCategory": {
+															"type": "string"
+														},
+														"totalMachineCount": {
+															"type": "integer"
+														},
+														"vendor": {
+															"type": "string"
+														},
+														"weaknesses": {
+															"type": "integer"
+														}
+													},
+													"required": [
+														"id",
+														"productName",
+														"recommendationName",
+														"weaknesses",
+														"vendor",
+														"recommendedVersion",
+														"recommendationCategory",
+														"subCategory",
+														"severityScore",
+														"publicExploit",
+														"activeAlert",
+														"associatedThreats",
+														"remediationType",
+														"status",
+														"configScoreImpact",
+														"exposureImpact",
+														"totalMachineCount",
+														"exposedMachinesCount",
+														"nonProductivityImpactedAssets",
+														"relatedComponent"
+													],
+													"type": "object"
+												},
+												"type": "array"
+											}
+										},
+										"type": "object"
+									}
+								},
+								"runAfter": {
+									"MDE_Recommendations_HTTP": [
+										"Succeeded"
+									]
+								},
+								"type": "ParseJson"
+							},
+							"MDE_Recommendations_Send_Data": {
+								"inputs": {
+									"body": "@{body('MDE_Recommendations_Parse_JSON')?['value']}",
+									"headers": {
+										"Log-Type": "MDfERecommendations"
+									},
+									"host": {
+										"connection": {
+											"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+										}
+									},
+									"method": "post",
+									"path": "/api/logs"
+								},
+								"runAfter": {
+									"MDE_Recommendations_Parse_JSON": [
+										"Succeeded"
+									]
+								},
+								"type": "ApiConnection"
+							},
+							"MDE_Secure_Score_HTTP": {
+								"inputs": {
+									"authentication": {
+										"audience": "https://api.securitycenter.windows.com",
+										"clientId": "@body('Get_ApplicationId_from_Key_Vault')?['value']",
+										"secret": "@body('Get_SecretId_from_Key_Vault')?['value']",
+										"tenant": "@body('Get_TenantId_from_Key_Vault')?['value']",
+										"type": "ActiveDirectoryOAuth"
+									},
+									"method": "GET",
+									"uri": "https://api.securitycenter.windows.com/api/configurationScore"
+								},
+								"runAfter": {
+									"For_each": [
+										"Succeeded"
+									]
+								},
+								"type": "Http"
+							},
+							"MDE_Secure_Score_Send_Data": {
+								"inputs": {
+									"body": "@{body('MDE_Secure_Score_HTTP')}",
+									"headers": {
+										"Log-Type": "MDfESecureScore"
+									},
+									"host": {
+										"connection": {
+											"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+										}
+									},
+									"method": "post",
+									"path": "/api/logs"
+								},
+								"runAfter": {
+									"MDE_Secure_Score_HTTP": [
+										"Succeeded"
+									]
+								},
+								"type": "ApiConnection"
+							},
+							"MDE_Vulnerabilities_HTTP": {
+								"inputs": {
+									"authentication": {
+										"audience": "https://api.securitycenter.windows.com",
+										"clientId": "@body('Get_ApplicationId_from_Key_Vault')?['value']",
+										"secret": "@body('Get_SecretId_from_Key_Vault')?['value']",
+										"tenant": "@body('Get_TenantId_from_Key_Vault')?['value']",
+										"type": "ActiveDirectoryOAuth"
+									},
+									"method": "GET",
+									"uri": "https://api.securitycenter.windows.com/api/Vulnerabilities"
+								},
+								"runAfter": {
+									"MDE_Recommendations_Send_Data": [
+										"Succeeded"
+									]
+								},
+								"type": "Http"
+							},
+							"MDE_Vulnerabilities_Parse_JSON": {
+								"inputs": {
+									"content": "@body('MDE_Vulnerabilities_HTTP')",
+									"schema": {
+										"properties": {
+											"@@odata.context": {
+												"type": "string"
+											},
+											"value": {
+												"items": {
+													"properties": {
+														"cvssV3": {
+															"type": "number"
+														},
+														"description": {
+															"type": "string"
+														},
+														"exploitInKit": {
+															"type": "boolean"
+														},
+														"exploitTypes": {
+															"type": "array"
+														},
+														"exploitUris": {
+															"type": "array"
+														},
+														"exploitVerified": {
+															"type": "boolean"
+														},
+														"exposedMachines": {
+															"type": "integer"
+														},
+														"id": {
+															"type": "string"
+														},
+														"name": {
+															"type": "string"
+														},
+														"publicExploit": {
+															"type": "boolean"
+														},
+														"publishedOn": {
+															"type": "string"
+														},
+														"severity": {
+															"type": "string"
+														},
+														"updatedOn": {
+															"type": "string"
+														}
+													},
+													"required": [
+														"id",
+														"name",
+														"description",
+														"severity",
+														"cvssV3",
+														"exposedMachines",
+														"publishedOn",
+														"updatedOn",
+														"publicExploit",
+														"exploitVerified",
+														"exploitInKit",
+														"exploitTypes",
+														"exploitUris"
+													],
+													"type": "object"
+												},
+												"type": "array"
+											}
+										},
+										"type": "object"
+									}
+								},
+								"runAfter": {
+									"MDE_Vulnerabilities_HTTP": [
+										"Succeeded"
+									]
+								},
+								"type": "ParseJson"
+							},
+							"MDE_Vulnerabilities_Send_Data": {
+								"inputs": {
+									"body": "@{body('MDE_Vulnerabilities_Parse_JSON')?['value']}",
+									"headers": {
+										"Log-Type": "MDfEVulnerabilitiesList"
+									},
+									"host": {
+										"connection": {
+											"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
+										}
+									},
+									"method": "post",
+									"path": "/api/logs"
+								},
+								"runAfter": {
+									"MDE_Vulnerabilities_Parse_JSON": [
+										"Succeeded"
+									]
+								},
+								"type": "ApiConnection"
+							}
+						},
+						"contentVersion": "1.0.0.0",
+						"outputs": {},
+						"parameters": {
+							"$connections": {
+								"defaultValue": {},
+								"type": "Object"
+							}
+						},
+						"triggers": {
+							"Recurrence": {
+								"evaluatedRecurrence": {
+									"frequency": "Week",
+									"interval": 1
+								},
+								"recurrence": {
+									"frequency": "Week",
+									"interval": 1
+								},
+								"type": "Recurrence"
+							}
+						}
+					},
+					"parameters": {
+						"$connections": {
+							"value": {
+								"azureloganalyticsdatacollector": {
+									"connectionId": "[resourceId('Microsoft.Web/connections', variables('AzureLogAnalyticsConnectionName'))]",
+									"connectionName": "[variables('AzureLogAnalyticsConnectionName')]",
+									"id": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', resourceGroup().location, 'azureloganalyticsdatacollector')]"
+								},
+								"keyvault": {
+									"connectionId": "[resourceId('Microsoft.Web/connections', 'keyvault')]",
+									"connectionName": "keyvault",
+									"connectionProperties": {
+										"authentication": {
+											"type": "ManagedServiceIdentity"
+										}
+									},
+									"id": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', resourceGroup().location, 'keyvault')]"
+								}
+							}
+						}
+					}
+				}
+          }
+    ]
+}
