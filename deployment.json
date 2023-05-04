@@ -4,11 +4,17 @@
     "parameters": {
         "LogicAppName": {
             "defaultValue": "AAD_CA_Policy_Overview",
-            "type": "string"
+            "type": "string",
+			"metadata": {
+			"description": "Specifies the name of the Logic App."
+				}
         },
 		"stgaccountname": {
 			"defaultValue": "caspolaadstg",
-			"type": "string"
+			"type": "string",
+			"metadata": {
+			"description": "Specifies the name of the Storage Account."
+				}
 		},	
 	    "containerName": {
 			"type": "string",
@@ -61,13 +67,16 @@
         },
         "Tenant_ID": {
             "defaultValue": "Enter your tenant ID here",
-            "type": "string"
+            "type": "string",
+			"metadata": {
+			"description": "The value of the Azure AD Service Principal Tenant ID"
+				}
         },
         "KeyVaultname": {
             "defaultValue": "Enter your Key Vault Name here",
             "type": "string",
 			"metadata": {
-			"description": "The value of the Azure AD Service Principal Tenant ID"
+			"description": "The value of the Azure Key Vault"
 				}
         },
         "LogAnalyticsWorkspaceID": {
