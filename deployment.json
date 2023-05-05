@@ -10,7 +10,7 @@
 				}
         },
 		"stgaccountname": {
-			"defaultValue": "caspolaadstg",
+			"defaultValue": "caspolaadstg1234",
 			"type": "string",
 			"metadata": {
 			"description": "Specifies the name of the Storage Account."
@@ -281,7 +281,7 @@
 								},
 								"host": {
 									"connection": {
-										"name": "@parameters('$connections')['azureloganalyticsdatacollector_1']['connectionId']"
+										"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
 									}
 								},
 								"method": "post",
@@ -367,7 +367,7 @@
 										},
 										"host": {
 											"connection": {
-												"name": "@parameters('$connections')['azureloganalyticsdatacollector_1']['connectionId']"
+												"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
 											}
 										},
 										"method": "post",
@@ -468,7 +468,7 @@
 										},
 										"host": {
 											"connection": {
-												"name": "@parameters('$connections')['azureloganalyticsdatacollector_1']['connectionId']"
+												"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
 											}
 										},
 										"method": "post",
@@ -552,7 +552,7 @@
 										},
 										"host": {
 											"connection": {
-												"name": "@parameters('$connections')['azureloganalyticsdatacollector_1']['connectionId']"
+												"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
 											}
 										},
 										"method": "post",
@@ -636,7 +636,7 @@
 										},
 										"host": {
 											"connection": {
-												"name": "@parameters('$connections')['azureloganalyticsdatacollector_1']['connectionId']"
+												"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
 											}
 										},
 										"method": "post",
@@ -737,7 +737,7 @@
 										},
 										"host": {
 											"connection": {
-												"name": "@parameters('$connections')['azureloganalyticsdatacollector_1']['connectionId']"
+												"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
 											}
 										},
 										"method": "post",
@@ -808,7 +808,7 @@
 															},
 															"host": {
 																"connection": {
-																	"name": "@parameters('$connections')['azureloganalyticsdatacollector_1']['connectionId']"
+																	"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
 																}
 															},
 															"method": "post",
@@ -1073,7 +1073,7 @@
 								},
 								"host": {
 									"connection": {
-										"name": "@parameters('$connections')['azureloganalyticsdatacollector_1']['connectionId']"
+										"name": "@parameters('$connections')['azureloganalyticsdatacollector']['connectionId']"
 									}
 								},
 								"method": "post",
